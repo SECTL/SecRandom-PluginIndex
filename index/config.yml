@@ -1,0 +1,4 @@
+generators:
+  - id: plugin
+    input: plugins
+    output: index.json

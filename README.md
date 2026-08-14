@@ -43,12 +43,12 @@ projectUrl: https://github.com/SECTL/SecRandom-ExamplePlugins
 dependencies:
   - id: com.example.lib
     required: true
-sha256: <hex from the release note>
-size: 12345
 ```
 
-`repoOwner` / `repoName` tell the workflow where to query the latest release and
-download count; `downloadUrl` is derived from them and the version.
+`repoOwner` / `repoName` tell the workflow where to query the latest release and its download count.
+The download URL, package size, and SHA-256 are all derived from the GitHub release: `downloadUrl`/`size`
+come from the `.srpx` asset, and `sha256` comes from the `<!-- SECRANDOM_SHA256: <hex> -->` block in the
+release note. They are not stored in the metadata file.
 
 ## Signing
 

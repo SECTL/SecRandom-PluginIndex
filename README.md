@@ -30,6 +30,10 @@ Official plugin market index for [SecRandom](https://github.com/SECTL/SecRandom)
 
 ## Plugin metadata format
 
+Each plugin is one YAML file under `plugins/`, named `<id>.yaml`. `repoOwner` / `repoName`
+must point at a real GitHub repository that already has a release with a single `.srpx` asset
+and the SHA-256 block, otherwise the workflow skips the plugin with a warning:
+
 ```yaml
 id: com.example.plugin
 name: SecRandom Example Plugin
@@ -37,9 +41,9 @@ description: Example plugin metadata.
 author: SECTL
 version: 1.0.0
 apiVersion: "3.0.0"
-repoOwner: SECTL
-repoName: SecRandom-ExamplePlugins
-projectUrl: https://github.com/SECTL/SecRandom-ExamplePlugins
+repoOwner: <your-github-owner>
+repoName: <your-plugin-repo>
+projectUrl: https://github.com/<your-github-owner>/<your-plugin-repo>
 dependencies:
   - id: com.example.lib
     required: true

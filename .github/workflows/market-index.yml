@@ -55,7 +55,12 @@ jobs:
 
           $pluginsDir = Join-Path $PWD 'plugins'
           $entries = @()
-          foreach ($yamlPath in (Get-ChildItem $pluginsDir -Filter '*.yaml' -File | Sort-Object Name)) {
+          $pluginFiles = if (Test-Path -LiteralPath $pluginsDir) {
+            Get-ChildItem $pluginsDir -Filter '*.yaml' -File | Sort-Object Name
+          } else {
+            @()
+          }
+          foreach ($yamlPath in $pluginFiles) {
             $content = Get-Content -LiteralPath $yamlPath -Raw
             $meta = @{}
             foreach ($line in $content -split "`n") {

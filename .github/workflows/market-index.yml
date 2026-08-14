@@ -1,0 +1,154 @@
+name: Build signed plugin index
+
+on:
+  push:
+    branches: [main]
+    paths: ['plugins/**']
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: plugin-index
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate signing secret
+        shell: pwsh
+        env:
+          PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64: ${{ secrets.PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64)) {
+            throw 'The plugin market index requires the PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64 secret.'
+          }
+
+      - name: Generate and sign index
+        shell: pwsh
+        env:
+          PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64: ${{ secrets.PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $privateKeyPath = Join-Path $env:RUNNER_TEMP 'plugin-market-ed25519.pem'
+          $publicDerPath = Join-Path $env:RUNNER_TEMP 'plugin-market-ed25519-public.der'
+          [IO.File]::WriteAllBytes($privateKeyPath, [Convert]::FromBase64String(($env:PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64 -replace '[^A-Za-z0-9+/=]', '')))
+
+          & openssl pkey -in $privateKeyPath -pubout -outform DER -out $publicDerPath
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL Ed25519 public-key export failed with exit code $LASTEXITCODE." }
+          $publicDer = [IO.File]::ReadAllBytes($publicDerPath)
+          if ($publicDer.Length -lt 32) { throw 'The plugin-market signing public key is invalid.' }
+          $derivedPublicKey = [Convert]::ToBase64String($publicDer[($publicDer.Length - 32)..($publicDer.Length - 1)])
+          $embeddedPublicKey = (Get-Content -LiteralPath 'SecRandom/Assets/Plugins/plugin-market-public-key.txt' -Raw).Trim()
+          if ($derivedPublicKey -cne $embeddedPublicKey) {
+            throw 'PLUGIN_MARKET_PRIVATE_KEY_PEM_BASE64 does not match SecRandom/Assets/Plugins/plugin-market-public-key.txt.'
+          }
+
+          $pluginsDir = Join-Path $PWD 'plugins'
+          $entries = @()
+          foreach ($yamlPath in (Get-ChildItem $pluginsDir -Filter '*.yaml' -File | Sort-Object Name)) {
+            $content = Get-Content -LiteralPath $yamlPath -Raw
+            $meta = @{}
+            foreach ($line in $content -split "`n") {
+              $trimmed = $line.Trim()
+              if ($trimmed -eq '' -or $trimmed.StartsWith('#') -or -not $trimmed.Contains(':')) { continue }
+              $colon = $trimmed.IndexOf(':')
+              $key = $trimmed.Substring(0, $colon).Trim()
+              $value = $trimmed.Substring($colon + 1).Trim().Trim('"', "'")
+              $meta[$key] = $value
+            }
+            if ([string]::IsNullOrWhiteSpace($meta['id'])) { throw "Plugin metadata missing id: $($yamlPath.Name)" }
+            if ([string]::IsNullOrWhiteSpace($meta['repoOwner']) -or [string]::IsNullOrWhiteSpace($meta['repoName'])) {
+              throw "Plugin $($meta['id']) is missing repoOwner/repoName."
+            }
+
+            $repo = "$($meta['repoOwner'])/$($meta['repoName'])"
+            try {
+              $release = gh api "repos/$repo/releases/latest" --jq '{tag_name, body, assets: [.assets[] | {name, browser_download_url, size, download_count}]}'
+              if ($LASTEXITCODE -ne 0) { throw 'gh api failed.' }
+              $release = $release | ConvertFrom-Json
+            }
+            catch {
+              Write-Warning "Skipping $($meta['id']) from $repo : $($_.Exception.Message)"
+              continue
+            }
+
+            $srpxAssets = @($release.assets | Where-Object { $_.name -like '*.srpx' })
+            if ($srpxAssets.Count -eq 0) {
+              Write-Warning "Skipping $($meta['id']) from $repo : no .srpx asset in the latest release."
+              continue
+            }
+            if ($srpxAssets.Count -gt 1) {
+              Write-Warning "Skipping $($meta['id']) from $repo : multiple .srpx assets found; exactly one is required."
+              continue
+            }
+            $asset = $srpxAssets[0]
+
+            $sha256 = ''
+            $match = [regex]::Match($release.body, '<!--\s*SECRANDOM_SHA256:\s*([0-9a-fA-F]{64})\s*-->')
+            if ($match.Success) { $sha256 = $match.Groups[1].Value.ToLowerInvariant() }
+            else {
+              Write-Warning "Skipping $($meta['id']) from $repo : release note is missing the SECRANDOM_SHA256 block."
+              continue
+            }
+
+            $dependencies = @()
+            if ($meta.ContainsKey('dependencies')) {
+              $depLines = @($content -split "`n")
+              $capturing = $false
+              foreach ($line in $depLines) {
+                $t = $line.Trim()
+                if ($t -match '^dependencies:\s*$') { $capturing = $true; continue }
+                if ($capturing -and $t -match '^- id:\s*(.+)$') {
+                  $dependencies += @{ id = $Matches[1].Trim().Trim('"', "'"); required = $true }
+                }
+              }
+            }
+
+            $entries += [ordered]@{
+              id = $meta['id']
+              name = if ($meta.ContainsKey('name')) { $meta['name'] } else { $meta['id'] }
+              description = if ($meta.ContainsKey('description')) { $meta['description'] } else { '' }
+              author = if ($meta.ContainsKey('author')) { $meta['author'] } else { $meta['repoOwner'] }
+              version = $release.tag_name.TrimStart('v', 'V')
+              apiVersion = if ($meta.ContainsKey('apiVersion')) { $meta['apiVersion'] } else { '3.0.0' }
+              minimumHostVersion = if ($meta.ContainsKey('minimumHostVersion')) { $meta['minimumHostVersion'] } else { '' }
+              downloadUrl = $asset.browser_download_url
+              sha256 = $sha256
+              size = $asset.size
+              downloads = $asset.download_count
+              projectUrl = if ($meta.ContainsKey('projectUrl')) { $meta['projectUrl'] } else { "https://github.com/$repo" }
+              readmeUrl = if ($meta.ContainsKey('readmeUrl')) { $meta['readmeUrl'] } else { '' }
+              iconUrl = if ($meta.ContainsKey('iconUrl')) { $meta['iconUrl'] } else { '' }
+              dependencies = $dependencies
+            }
+          }
+
+          $index = [ordered]@{ schemaVersion = 1; product = 'SecRandom'; plugins = $entries }
+          $indexBytes = [Text.Encoding]::UTF8.GetBytes(($index | ConvertTo-Json -Depth 10 -Compress))
+          $indexPath = Join-Path $env:RUNNER_TEMP 'index.json'
+          $signaturePath = Join-Path $env:RUNNER_TEMP 'index.json.sig'
+          [IO.File]::WriteAllBytes($indexPath, $indexBytes)
+          & openssl pkeyutl -sign -rawin -inkey $privateKeyPath -in $indexPath -out $signaturePath
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL Ed25519 signing failed with exit code $LASTEXITCODE." }
+
+          Write-Host "Generated index with $($entries.Count) plugins."
+
+          # Upload to the fixed release tag 'generated' with overwrite.
+          $tag = 'generated'
+          $releaseExists = gh release view $tag --json tagName 2>$null
+          if ($LASTEXITCODE -ne 0 -or $null -eq $releaseExists) {
+            gh release create $tag --title 'Plugin market index' --notes 'Auto-generated signed plugin market index.'
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create release $tag." }
+          }
+          gh release upload $tag $indexPath $signaturePath --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload index assets to release $tag." }

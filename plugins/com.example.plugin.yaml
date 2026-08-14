@@ -1,0 +1,11 @@
+id: com.example.plugin
+name: SecRandom Example Plugin
+description: Example plugin metadata for the SecRandom plugin market.
+author: SECTL
+version: 1.0.0
+apiVersion: "3.0.0"
+repoOwner: SECTL
+repoName: SecRandom-ExamplePlugins
+projectUrl: https://github.com/SECTL/SecRandom-ExamplePlugins
+sha256: replace-with-the-hex-from-your-release-note
+size: 0

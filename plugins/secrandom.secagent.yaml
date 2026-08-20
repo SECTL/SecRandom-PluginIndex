@@ -1,0 +1,11 @@
+id: secrandom.secagent
+name: SecRandom SecAgent 集成
+description: 为 SecRandom 提供 SecAgent 本地连接器接口。
+author: SECTL
+version: 1.0.1
+apiVersion: "3.0.0"
+repoOwner: SECTL
+repoName: SecRandom-SecAgent-Plugin
+projectUrl: https://github.com/SECTL/SecRandom-SecAgent-Plugin
+readmeUrl: https://github.com/SECTL/SecRandom-SecAgent-Plugin#readme
+iconUrl: https://raw.githubusercontent.com/SECTL/SecRandom-SecAgent-Plugin/master/icon.png

@@ -1,0 +1,10 @@
+id: secscore.launcher
+name: SecScore Launcher
+description: 在 SecRandom 悬浮窗中启动或聚焦 SecScore。
+author: SECTL
+version: 1.0.0
+apiVersion: "3.0.0"
+repoOwner: SECTL
+repoName: SecRandom-SecScore-Plugin
+projectUrl: https://github.com/SECTL/SecRandom-SecScore-Plugin
+readmeUrl: https://github.com/SECTL/SecRandom-SecScore-Plugin#readme

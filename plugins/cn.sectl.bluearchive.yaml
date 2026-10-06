@@ -1,0 +1,11 @@
+id: cn.sectl.bluearchive
+name: 碧蓝档案招募
+description: 把抽签演出换成碧蓝档案招募风格的翻牌：抽取时信封错峰飞入，结果就地在主程序结果区逐张揭名。
+author: SECTL
+version: 1.0.0
+apiVersion: "3.1.0"
+repoOwner: lzy98276
+repoName: SecRandom-Blue-Archive-Plugins
+projectUrl: https://github.com/lzy98276/SecRandom-Blue-Archive-Plugins
+readmeUrl: https://github.com/lzy98276/SecRandom-Blue-Archive-Plugins#readme
+iconUrl: https://raw.githubusercontent.com/lzy98276/SecRandom-Blue-Archive-Plugins/main/BlueArchiveFlip/icon.png
